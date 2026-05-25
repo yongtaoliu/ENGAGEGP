@@ -801,12 +801,37 @@ def get_feature_extractor(
         intermediate_dim = kwargs.get('intermediate_dim', None)
         return DirectAttentionExtractor(
             input_dim, feature_dim, num_heads, intermediate_dim, dropout) 
+
+    elif extractor_type == 'direct_attention_gp':
+        # Pure-GP variant: keep the GP operating in the original input space
+        # by matching feature_dim to input_dim (no compression).
+        num_heads = kwargs.get('num_heads', 4)
+        intermediate_dim = kwargs.get('intermediate_dim', input_dim)
+        return DirectAttentionExtractor(
+            input_dim=input_dim,
+            feature_dim=input_dim,
+            num_heads=num_heads,
+            intermediate_dim=intermediate_dim,
+            dropout=dropout,
+        )
     
     elif extractor_type == 'attention_weighted':
         base_extractor = kwargs.get('base_extractor', 'fcbn')
         return AttentionWeightedExtractor(
             input_dim, feature_dim, base_extractor, hidden_dims, dropout
         ) 
+    
+    elif extractor_type == 'attention_weighted_gp':
+        # Pure-GP variant: keep the GP operating in the original input space
+        # by matching feature_dim to input_dim (no compression).
+        base_extractor = kwargs.get('base_extractor', 'fc')
+        return AttentionWeightedExtractor(
+            input_dim=input_dim,
+            feature_dim=input_dim,
+            base_extractor=base_extractor,
+            hidden_dims=hidden_dims,
+            dropout=dropout,
+        )
 
     elif extractor_type == 'custom':
         custom_extractor = kwargs.get('custom_extractor')
@@ -820,7 +845,9 @@ def get_feature_extractor(
     else:
         raise ValueError(f"Unknown extractor_type: {extractor_type}. "
                         f"Choose from: 'fc', 'fcbn', 'resnet', 'attention', "
-                        f"'direct_attention', 'attention_weighted', 'custom', or None")
+                        f"'direct_attention', 'attention_weighted', "
+                        f"'direct_attention_gp', 'attention_weighted_gp', "
+                        f"'custom', or None")
 
 
 # ============================================================================

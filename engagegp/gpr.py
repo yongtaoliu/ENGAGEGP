@@ -8,12 +8,13 @@ import matplotlib.pyplot as plt
 from botorch.models import SingleTaskGP
 from botorch.models.transforms.input import Normalize
 from botorch.models.transforms.outcome import Standardize
-from gpytorch.kernels import RBFKernel, ScaleKernel
+from gpytorch.kernels import RBFKernel, MaternKernel, ScaleKernel
 from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from scipy.stats import norm
 
 from .models import get_feature_extractor
+from .kernels import AttentionWeightedRBFKernel, InputMixingRBFKernel
 
 
 # ============================================================================
@@ -217,7 +218,9 @@ class DeepKernelGP(nn.Module):
         extractor_kwargs=None,
         confidence_weights=None,
         noise_constraint=None,
-        dropout=0.2
+        dropout=0.2,
+        gp_kernel_type: str = "rbf",
+        matern_nu: float = 2.5,
     ):
         super().__init__()
         
@@ -250,8 +253,34 @@ class DeepKernelGP(nn.Module):
         with torch.no_grad():
             train_features = self.feature_extractor(datapoints)
 
-        # Set up GP kernel
-        covar_module = ScaleKernel(RBFKernel(ard_num_dims=feature_dim))
+        # Set up GP kernel (default: RBF on feature space).
+        # When extractor_type is None, feature_dim is forced to input_dim and the GP
+        # operates directly on the original input space. In that case, we optionally
+        # enable attention-like mechanisms inside the kernel while keeping X as the
+        # kernel input (no learned feature extractor).
+        if gp_kernel_type == "rbf":
+            base_kernel = RBFKernel(ard_num_dims=feature_dim)
+        elif gp_kernel_type == "matern":
+            base_kernel = MaternKernel(nu=matern_nu, ard_num_dims=feature_dim)
+        elif gp_kernel_type == "matern_12":
+            base_kernel = MaternKernel(nu=0.5, ard_num_dims=feature_dim)
+        elif gp_kernel_type == "matern_32":
+            base_kernel = MaternKernel(nu=1.5, ard_num_dims=feature_dim)
+        elif gp_kernel_type == "matern_52":
+            base_kernel = MaternKernel(nu=2.5, ard_num_dims=feature_dim)
+        elif gp_kernel_type == "attention_weighted" and extractor_type is None:
+            base_kernel = AttentionWeightedRBFKernel(input_dim=input_dim)
+        elif gp_kernel_type == "direct_attention" and extractor_type is None:
+            base_kernel = InputMixingRBFKernel(input_dim=input_dim)
+        else:
+            raise ValueError(
+                "Unknown or incompatible gp_kernel_type="
+                f"{gp_kernel_type!r} for extractor_type={extractor_type!r}. "
+                "Use 'rbf' or 'matern*' always, or for extractor_type=None use "
+                "'attention_weighted' or 'direct_attention'."
+            )
+
+        covar_module = ScaleKernel(base_kernel)
         
         # Initialize likelihood
         likelihood = GaussianLikelihood()
@@ -354,7 +383,9 @@ def train_dkgp(
     patience=None,
     min_delta=1e-4,
     sample_weights_param=None,
-    sample_weight_lr=None
+    sample_weight_lr=None,
+    gp_kernel_type: str = "rbf",
+    matern_nu: float = 2.5,
 ):
     """
     Train Deep Kernel GP for regression.
@@ -471,7 +502,9 @@ def train_dkgp(
         hidden_dims=hidden_dims,
         extractor_type=extractor_type,
         extractor_kwargs=extractor_kwargs,
-        confidence_weights=confidence_weights
+        confidence_weights=confidence_weights,
+        gp_kernel_type=gp_kernel_type,
+        matern_nu=matern_nu,
     ).to(device)
     
     # Handle sample-level attention
@@ -616,7 +649,9 @@ def fit_dkgp(
     device='cuda' if torch.cuda.is_available() else 'cpu',
     verbose=True,
     patience=None,
-    min_delta=1e-4
+    min_delta=1e-4,
+    gp_kernel_type: str = "rbf",
+    matern_nu: float = 2.5,
 ):
     """
     Fit Deep Kernel GP regression model.
@@ -774,7 +809,9 @@ def fit_dkgp(
         patience=patience,
         min_delta=min_delta,
         sample_weights_param=sample_weights_param,  # Pass sample weights
-        sample_weight_lr=sample_weight_lr if learn_sample_weights else None
+        sample_weight_lr=sample_weight_lr if learn_sample_weights else None,
+        gp_kernel_type=gp_kernel_type,
+        matern_nu=matern_nu,
     )
 
     gp_model = dkl_model.gp_model

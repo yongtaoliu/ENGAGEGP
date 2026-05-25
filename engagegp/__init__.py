@@ -76,12 +76,19 @@ from .utils import (
     load_model,
 )
 
+# Kernels
+from .kernels import (
+    AttentionWeightedRBFKernel,
+    InputMixingRBFKernel,
+)
+
 # Submodules - for convenience imports
 from . import gpr as dkgpr 
 from . import gpc as dkgpc
 from . import gppw as dkgppw 
 from . import utils
 from . import models
+from . import kernels
 
 __version__ = "0.2.0"
 
@@ -143,10 +150,15 @@ __all__ = [
     "save_model",
     "load_model",
 
+    # Kernels
+    "AttentionWeightedRBFKernel",
+    "InputMixingRBFKernel",
+
     # Submodules
     "dkgpr",
     "dkgpc",
     "dkgppw",
     "utils",
     "models",
+    "kernels",
 ]
